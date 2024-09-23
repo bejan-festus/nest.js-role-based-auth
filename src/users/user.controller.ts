@@ -1,13 +1,13 @@
 import { Controller, Get, UseGuards } from '@nestjs/common';
 import { UserService } from './user.service';
-import { AuthGuard } from 'src/auth/guards/auth.guard';
+import { AuthenticationGuard } from 'src/auth/guards/authentication.guard';
 
 @Controller('users')
 export class UserController {
 
     constructor(private userService:UserService){}
 
-    @UseGuards(AuthGuard)
+    @UseGuards(AuthenticationGuard)
     @Get('get-all-users')
     getAllUsers(){
          return this.userService.getAllUsers()  

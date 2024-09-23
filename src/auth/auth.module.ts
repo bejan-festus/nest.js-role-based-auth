@@ -6,19 +6,24 @@ import { JwtModule } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
 import { AuthToken, AuthTokenSchema } from './models/auth.model';
+import { ResetPassword, ResetPasswordSchema } from './models/resetPassword.model';
+import { RolesModule } from 'src/roles/roles.module';
 
 @Module({
   controllers: [AuthController],
-  imports:[UserModule, 
+  imports:[UserModule, RolesModule,
     JwtModule.registerAsync({
       useFactory:(configService:ConfigService)=>({
-        secret: configService.get<string>('jwt.jwtAccessSecret'),
-        signOptions:{expiresIn:configService.get<string>('jwt.jwtExpiresIn')}
+        secret: configService.get<string>('jwt.accessSecret'),
+        signOptions:{expiresIn:configService.get<string>('jwt.accessExpiresIn')}
       }),
       inject:[ConfigService],
       global:true
     }),
-    MongooseModule.forFeature([{name:AuthToken.name, schema:AuthTokenSchema }]),
+    MongooseModule.forFeature([
+      {name:AuthToken.name, schema:AuthTokenSchema },
+      {name:ResetPassword.name, schema:ResetPasswordSchema },
+    ]),
   ],
   providers:[AuthService],
   exports:[AuthService]

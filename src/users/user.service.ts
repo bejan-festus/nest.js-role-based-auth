@@ -14,12 +14,25 @@ export class UserService {
         return createdUser.save()
     }
 
-    getUserByEmail(email:string):Promise<{password:string, _id:mongoose.Types.ObjectId}>{
+    getUserPasswordByEmail(email:string):Promise<{password:string, _id:mongoose.Types.ObjectId}>{
         return this.userModel.findOne({email:email}, {password:1})
     }
 
-   async getAllUsers():Promise<Omit<User, 'password' >[]>{
-        return await this.userModel.find({},{firstName:1, lastName:1, email:1, _id:false})
+   getAllUsers():Promise<Omit<User, 'password' >[]>{
+        return this.userModel.find({},{firstName:1, lastName:1, email:1, _id:false})
+    }
+
+    getUserByEmail(email:string){
+        return this.userModel.findOne({email:email}, {password:0})
+    }
+
+    getUserById(userId:string){
+        return this.userModel.findOne({_id: new mongoose.Types.ObjectId(userId)})
+    }
+
+
+    updatePasswordByUserId(userId:mongoose.Types.ObjectId, password:string){        
+        return this.userModel.updateOne({_id:userId},{$set:{password:password}})
     }
 
 
