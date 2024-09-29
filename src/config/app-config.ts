@@ -12,7 +12,9 @@ export const jwtConfig = registerAs('jwt', () => ({
   forgotPasswordSecret: process.env.JWT_FORGOT_PASSWORD_SECRET,
   accessExpiresIn: process.env.JWT_EXPIRES_IN,
   refreshExpiresIn: process.env.JWT_REFRESH_IN,
-  forgotPasswordExpiresIn: process.env.JWT_FORGOT_PASSWORD_EXPIRES_IN
+  forgotPasswordExpiresIn: process.env.JWT_FORGOT_PASSWORD_EXPIRES_IN,
+  tenantEncryptionKey:process.env.JWT_TENANT_SECRET_ENCRYPTION_KEY,
+  tenantEncryptionAlgorithm:process.env.JWT_TENANT_SECRET_ENCRYPTION_ALOGORITHM
 }));
 
 export const mongoConfig = registerAs('mongo', () => ({

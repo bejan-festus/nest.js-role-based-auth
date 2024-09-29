@@ -26,7 +26,7 @@ export class User {
     password: string;
 
     @Prop({
-        required: true
+        // required: true
     })
     roleId: mongoose.Types.ObjectId;
 }

@@ -22,7 +22,7 @@ export class UserService {
         return this.userModel.find({},{firstName:1, lastName:1, email:1, _id:false})
     }
 
-    getUserByEmail(email:string){
+    getUserByEmail(email:string):Promise<Omit<User & {_id:mongoose.Types.ObjectId}, 'password' >>{
         return this.userModel.findOne({email:email}, {password:0})
     }
 
