@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsString, IsOptional, IsEmail, IsEnum, ArrayUnique, ValidateNested } from "class-validator"
+import { IsNotEmpty, IsString, IsEnum, ArrayUnique, ValidateNested } from "class-validator"
 import { Resource } from "../enums/resource.enum"
 import { Action } from "../enums/action.enum"
 import { Type } from "class-transformer"

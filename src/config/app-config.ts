@@ -7,8 +7,6 @@ export const appConfig = registerAs('app', () => ({
 }));
 
 export const jwtConfig = registerAs('jwt', () => ({
-  accessSecret: process.env.JWT_ACCESS_SECRET,
-  refreshSecret: process.env.JWT_REFRESH_SECRET,
   forgotPasswordSecret: process.env.JWT_FORGOT_PASSWORD_SECRET,
   accessExpiresIn: process.env.JWT_EXPIRES_IN,
   refreshExpiresIn: process.env.JWT_REFRESH_IN,

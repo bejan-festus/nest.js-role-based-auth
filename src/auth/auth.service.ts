@@ -111,27 +111,29 @@ export class AuthService {
 
         if (!isMatch) {
             throw new UnauthorizedException()
-        }        
+        }
 
-        const userTenant = await this.tenantService.getUserAssignedTenant(user._id)        
+        const userTenant = await this.tenantService.getUserAssignedTenant(user._id)
 
         if (!userTenant) {
             throw new HttpException('Create tenant to continue', HttpStatus.FAILED_DEPENDENCY);
         }
 
         const tenant = await this.tenantService.getTenantById(userTenant.tenantId)
-        
 
-        const iv = tenant.jwtAccessSecret.split('.')[0]
-        const encrypted = tenant.jwtAccessSecret.split('.')[1]  
 
-        const secret = decrypt(encrypted, iv, this.configService.get('jwt.tenantEncryptionAlgorithm'), this.configService.get('jwt.tenantEncryptionKey'))
+        const [accessIv, accessEncrypted] = tenant.jwtAccessSecret.split('.')
 
+        const accessSecret = decrypt(accessEncrypted, accessIv, this.configService.get('jwt.tenantEncryptionAlgorithm'), this.configService.get('jwt.tenantEncryptionKey'))
+
+        const [refreshIv, refreshEncrypted] = tenant.jwtRefreshSecret.split('.')
+
+        const refreshSecret = decrypt(refreshEncrypted, refreshIv, this.configService.get('jwt.tenantEncryptionAlgorithm'), this.configService.get('jwt.tenantEncryptionKey'))
 
         const token: AuthToken = {
             userId: user._id,
-            access: this.generateToken({ userId: user._id.toString() }, secret, this.configService.get<string>('jwt.accessExpiresIn')),
-            refresh: this.generateToken({ userId: user._id.toString() }, secret, this.configService.get<string>('jwt.refreshExpiresIn'))
+            access: this.generateToken({ userId: user._id.toString() }, accessSecret, this.configService.get<string>('jwt.accessExpiresIn')),
+            refresh: this.generateToken({ userId: user._id.toString() }, refreshSecret, this.configService.get<string>('jwt.refreshExpiresIn'))
         }
 
         await this.updateTokenByUserId(token)
@@ -140,17 +142,36 @@ export class AuthService {
 
     }
 
-    async refreshToken(accessTokenObj: refreshTokenDto) {
-        const tokenDoc: AuthToken = await this.findOneAccessToken(accessTokenObj.access)
+    async refreshToken(reqBody: refreshTokenDto, tenantId: string) {
+
+        const tokenDoc: AuthToken = await this.findOneAccessToken(reqBody.access)
 
         if (!tokenDoc) {
             throw new UnauthorizedException()
         }
 
+        const tenant = await this.tenantService.getTenant(tenantId)
+
+        const [iv, encrypted] = tenant.jwtRefreshSecret.split('.')
+
+        const secret = decrypt(encrypted, iv, this.configService.get('jwt.tenantEncryptionAlgorithm'), this.configService.get('jwt.tenantEncryptionKey'))
+
+        try {
+            const payload: { userId: string, iat: number, exp: number } = await this.jwtService.verifyAsync(tokenDoc.refresh, {
+                secret: secret,
+            });
+
+            if (tokenDoc.userId.toString() !== payload.userId) {
+                throw new Error();
+            }
+        } catch (err) {
+            throw new UnauthorizedException();
+        }
+
         const newToken: AuthToken = {
             userId: tokenDoc.userId,
-            access: this.generateAccessToken({ userId: tokenDoc.userId.toString() }),
-            refresh: this.generateRefreshToken({ userId: tokenDoc.userId.toString() })
+            access: this.generateToken({ userId: tokenDoc.userId.toString() }, secret, this.configService.get<string>('jwt.accessExpiresIn')),
+            refresh: this.generateToken({ userId: tokenDoc.userId.toString() }, secret, this.configService.get<string>('jwt.refreshExpiresIn'))
         }
 
         await this.updateTokenByUserId(newToken)
@@ -159,29 +180,32 @@ export class AuthService {
     }
 
     findOneAccessToken(token: string) {
-        return this.AuthTokenModel.findOne({ access: token }, { access: 1 })
+        return this.AuthTokenModel.findOne({ access: token })
     }
 
+
     async forgotPassword(reqBody: forgotPasswordDto) {
-        const emailUser = await this.userService.getUserByEmail(reqBody.email)
+        const user = await this.userService.getUserByEmail(reqBody.email)
 
-        if (emailUser) {
+        if (user) {
 
-            const resetToken = this.generateResetPasswordToken({ userId: emailUser._id.toString() })
+            const userAssignedTenant = await this.tenantService.getUserAssignedTenant(user._id)
 
-            const isResetTokenExist = await this.resetPasswordModel.findOne({ userId: emailUser._id })
+            const tenant = await this.tenantService.getTenantById(userAssignedTenant.tenantId)
 
-            if (isResetTokenExist) {
-                await this.resetPasswordModel.updateOne({ userId: emailUser._id }, { $set: { resetPasswordToken: resetToken } })
-            } else {
-                await this.resetPasswordModel.create({ userId: emailUser._id, resetPasswordToken: resetToken })
-            }
+            const [iv, encrypted] = tenant.jwtResetPasswordSecret.split('.')
+
+            const secret = decrypt(encrypted, iv, this.configService.get('jwt.tenantEncryptionAlgorithm'), this.configService.get('jwt.tenantEncryptionKey'))
+
+            const resetToken = this.generateToken({ userId: user._id.toString() }, secret, this.configService.get<string>('jwt.forgotPasswordExpiresIn'))
+
+            await this.resetPasswordModel.updateOne({ userId: user._id }, { $set: { resetPasswordToken: resetToken } }, { upsert: true })
 
             const message = `${this.configService.get('app.clientUrl')}/forgot-password?token=${resetToken}`;
 
             const mailObj: ISendMailOptions = {
                 from: `Support <${this.configService.get('smtp.fromEmail')}>`,
-                to: emailUser.email,
+                to: user.email,
                 subject: `Reset password`,
                 text: message,
             }
@@ -193,14 +217,20 @@ export class AuthService {
 
 
     async resetPassword(reqBody: resetPasswordDto) {
-        const isTokenInDb: ResetPassword = await this.resetPasswordModel.findOne({ resetPasswordToken: reqBody.resetToken })
+        const token: ResetPassword = await this.resetPasswordModel.findOne({ resetPasswordToken: reqBody.resetToken })
 
-        if (!isTokenInDb) { throw new UnauthorizedException() }
+        if (!token) { throw new UnauthorizedException() }
+
+        const userAssignedTenant = await this.tenantService.getUserAssignedTenant(token.userId)
+
+        const tenant = await this.tenantService.getTenantById(userAssignedTenant.tenantId)
+
+        const [iv, encrypted] = tenant.jwtResetPasswordSecret.split('.')
+
+        const secret = decrypt(encrypted, iv, this.configService.get('jwt.tenantEncryptionAlgorithm'), this.configService.get('jwt.tenantEncryptionKey'))
 
         try {
-            const payload: { userId: string, iat: number, exp: number } = await this.jwtService.verifyAsync(isTokenInDb.resetPasswordToken, {
-                secret: this.configService.get<string>('jwt.forgotPasswordSecret'),
-            });
+            const payload: { userId: string, iat: number, exp: number } = await this.jwtService.verifyAsync(token.resetPasswordToken, {secret: secret});
 
             const newHashedPassword = await this.hashPassword(reqBody.newPassword)
 

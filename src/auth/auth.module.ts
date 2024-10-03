@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { MiddlewareConsumer, Module } from '@nestjs/common';
 import { AuthController } from './auth.controller';
 import { UserModule } from 'src/users/user.module';
 import { AuthService } from './auth.service';
@@ -8,18 +8,15 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { AuthToken, AuthTokenSchema } from './models/auth.model';
 import { ResetPassword, ResetPasswordSchema } from './models/resetPassword.model';
 import { RolesModule } from 'src/roles/roles.module';
-import { tenantConnectionProvider } from 'src/providers/tenant-connection.provider';
+import { tenantConnectionProvider } from 'src/tenant/providers/tenant-connection.provider';
 import { TenantModule } from 'src/tenant/tenant.module';
+import { TenantsMiddleware } from 'src/middlewares/tenant.middleware';
 
 @Module({
   controllers: [AuthController],
   imports:[UserModule, RolesModule, TenantModule,
     JwtModule.registerAsync({
-      useFactory:(configService:ConfigService)=>({
-        secret: configService.get<string>('jwt.accessSecret'),
-        signOptions:{expiresIn:configService.get<string>('jwt.accessExpiresIn')}
-      }),
-      inject:[ConfigService],
+      useFactory:()=>({}),
       global:true
     }),
     MongooseModule.forFeature([
@@ -30,4 +27,8 @@ import { TenantModule } from 'src/tenant/tenant.module';
   providers:[AuthService, tenantConnectionProvider],
   exports:[AuthService, tenantConnectionProvider]
 })
-export class AuthModule {}
+export class AuthModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer.apply(TenantsMiddleware).forRoutes('auth/refresh');
+  }
+}

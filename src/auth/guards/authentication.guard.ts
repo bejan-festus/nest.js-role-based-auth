@@ -26,8 +26,7 @@ export class AuthenticationGuard implements CanActivate {
 
     const tenant = await this.tenantService.getTenant(request.tenantId)
 
-    const iv = tenant.jwtAccessSecret.split('.')[0]
-    const encrypted = tenant.jwtAccessSecret.split('.')[1]
+    const [iv, encrypted] = tenant.jwtAccessSecret.split('.')
 
     const secret = decrypt(encrypted, iv,this.configService.get('jwt.tenantEncryptionAlgorithm'), this.configService.get('jwt.tenantEncryptionKey'))
 

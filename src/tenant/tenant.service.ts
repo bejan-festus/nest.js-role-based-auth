@@ -26,7 +26,7 @@ export class TenantService {
     }
 
     generateSecret() {
-        const secret = crypto.randomBytes(64).toString('base64');
+        const secret = crypto.randomBytes(64).toString('base64');                
         const iv = crypto.randomBytes(16).toString('hex') // should be 16 byte long for aes256
         const encrypted =  encrypt(secret, iv, this.configService.get('jwt.tenantEncryptionAlgorithm'), this.configService.get('jwt.tenantEncryptionKey'))
         return iv + '.' + encrypted

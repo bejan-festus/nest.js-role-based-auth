@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Post, Req, Request, UseGuards } from '@nestjs/common';
 import { createUserDto } from '../users/dtos/createUser.dto';
 import { AuthService } from './auth.service';
 import { loginDto } from './dtos/login.dto';
@@ -26,9 +26,9 @@ export class AuthController {
     }
 
     @Post('refresh')
-    refreshToken(@Body() reqBody: refreshTokenDto) {
+    refreshToken(@Body() reqBody: refreshTokenDto, @Req(){tenantId}:{tenantId:string}) {
 
-        return this.authService.refreshToken(reqBody)
+        return this.authService.refreshToken(reqBody, tenantId)
         
     }
 
@@ -37,7 +37,7 @@ export class AuthController {
 
         this.authService.forgotPassword(reqBody)
 
-        return { message: "Email send to your registered address" }
+        return { message: "Email send to your registered mail address" }
         
     }
 
