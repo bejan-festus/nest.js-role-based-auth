@@ -12,18 +12,17 @@ import { TenantService } from 'src/tenant/tenant.service';
     constructor(private tenantsService: TenantService) {}
   
     async use(req: Request, res: Response, next: NextFunction) {
-      //Check that tenantId exists in the headers of the request
       const tenantId = req.headers['x-tenant-id']?.toString();
       if (!tenantId) {
         throw new BadRequestException('X-TENANT-ID not provided');
       }
   
-      const tenantExits = await this.tenantsService.getTenant(tenantId);
-      if (!tenantExits) {
+      const tenant = await this.tenantsService.getTenant(tenantId);
+      if (!tenant) {
         throw new NotFoundException('Tenant does not exist');
       }
-      //Set the tenantId on the request object for later access
-      req['tenantId'] = tenantId;
+      req['tenantId'] = tenant._id.toString();
+      req['jwtAccessSecret'] = tenant.jwtAccessSecret;
       next();
     }
   }

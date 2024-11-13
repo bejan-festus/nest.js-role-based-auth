@@ -5,7 +5,7 @@ import { Connection } from 'mongoose';
 
 export const tenantConnectionProvider = {
   provide: 'TENANT_CONNECTION',
-  useFactory: async (request, connection: Connection) => {
+  useFactory: async (request, connection: Connection) => {    
     if (!request.tenantId) {
       throw new InternalServerErrorException(
         'Make sure to apply tenantsMiddleware'
@@ -14,4 +14,5 @@ export const tenantConnectionProvider = {
     return connection.useDb(`tenant_${request.tenantId}`);
   },
   inject: [REQUEST, getConnectionToken()],
+  durable: true,
 };

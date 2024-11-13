@@ -8,43 +8,46 @@ import { decrypt } from "src/utils/decrypt.util";
 
 @Injectable()
 export class AuthenticationGuard implements CanActivate {
-  constructor(private jwtService: JwtService, private authService:AuthService, private tenantService:TenantService, private configService:ConfigService) {}
+  constructor(private jwtService: JwtService, private authService: AuthService, private tenantService: TenantService, private configService: ConfigService) { }
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
 
     const request = context.switchToHttp().getRequest();
-    const token = this.extractTokenFromHeader(request);
-    if (!token) {
+    const reqToken = this.extractTokenFromHeader(request);
+    if (!reqToken) {
       throw new UnauthorizedException();
     }
 
-    const isTokenInDb = await this.authService.findOneAccessToken(token)
+    const tokenInDb = await this.authService.findOneAccessToken(reqToken)
 
-    if(!isTokenInDb){
+    if (!tokenInDb) {
+      throw new UnauthorizedException();
+    }        
+
+    const isUserAssigned = await this.tenantService.isUserAssignedToTenant({tenantId: request.tenantId, userId: tokenInDb.userId.toString()})    
+
+    if(!isUserAssigned){
       throw new UnauthorizedException();
     }
 
-    const tenant = await this.tenantService.getTenant(request.tenantId)
+    const [iv, encrypted] = request.jwtAccessSecret.split('.')    
 
-    const [iv, encrypted] = tenant.jwtAccessSecret.split('.')
-
-    const secret = decrypt(encrypted, iv,this.configService.get('jwt.tenantEncryptionAlgorithm'), this.configService.get('jwt.tenantEncryptionKey'))
+    const secret = decrypt(encrypted, iv, this.configService.get('jwt.tenantEncryptionAlgorithm'), this.configService.get('jwt.tenantEncryptionKey'))
 
     try {
-      const payload:{userId:string, iat:number, exp:number} = await this.jwtService.verifyAsync(token, {
+      const payload: { userId: string, iat: number, exp: number } = await this.jwtService.verifyAsync(reqToken, {
         secret: secret,
       });
-      
+
       request['userId'] = payload.userId;
-      
-      
+
     } catch {
       throw new UnauthorizedException();
     }
     return true;
   }
 
-  private extractTokenFromHeader(request: Request): string | undefined {    
+  private extractTokenFromHeader(request: Request): string | undefined {
     const [type, token] = request.headers.authorization?.split(' ') ?? [];
     return type === 'Bearer' ? token : undefined;
   }

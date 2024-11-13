@@ -1,12 +1,11 @@
-import { BadRequestException, HttpException, HttpStatus, Injectable, UnauthorizedException } from '@nestjs/common';
-import { createUserDto } from 'src/users/dtos/createUser.dto';
+import { BadRequestException, ConflictException, HttpException, HttpStatus, Injectable, UnauthorizedException } from '@nestjs/common';
 import { UserService } from 'src/users/user.service';
 import * as bcrypt from 'bcrypt';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { InjectModel } from '@nestjs/mongoose';
 import { AuthToken } from './models/auth.model';
-import mongoose, { Model, mongo } from 'mongoose';
+import mongoose, { Model, mongo, Mongoose } from 'mongoose';
 import { loginDto } from './dtos/login.dto';
 import { refreshTokenDto } from './dtos/refreshToken.dto';
 import { forgotPasswordDto } from './dtos/forgotPassword.dto';
@@ -15,7 +14,7 @@ import { ISendMailOptions, MailerService } from '@nestjs-modules/mailer';
 import { resetPasswordDto } from './dtos/resetPassword.dto';
 import { RolesService } from 'src/roles/roles.service';
 import { TenantService } from 'src/tenant/tenant.service';
-import { decrypt } from 'src/utils/decrypt.util';
+import { signupDto } from './dtos/signup.dto';
 
 @Injectable()
 export class AuthService {
@@ -23,56 +22,56 @@ export class AuthService {
     constructor(private userService: UserService, private configService: ConfigService, private jwtService: JwtService, @InjectModel(AuthToken.name) private AuthTokenModel: Model<AuthToken>,
         @InjectModel(ResetPassword.name) private resetPasswordModel: Model<ResetPassword>, private mailService: MailerService, private roleService: RolesService, private tenantService: TenantService) { }
 
-    async signup(user: createUserDto) {
+    async signup(signupDto: signupDto) {
+        const isUserExist = await this.userService.getUserByEmail(signupDto.email)
 
-        const hashedPassword = await this.hashPassword(user.password)
+        if(isUserExist){
+            throw new ConflictException('Email already exist')
+        }
 
-        user = {
-            ...user,
+        const hashedPassword = await this.hashPassword(signupDto.password)
+
+       const user = {
+            ...signupDto,
+            email:signupDto.email.toLowerCase(),
             password: hashedPassword
         }
 
         const createdUser = await this.userService.createUser(user)
 
-        // const token = {
-        //     access: this.generateAccessToken({ userId: createdUser._id.toString() }),
-        //     refresh: this.generateRefreshToken({ userId: createdUser._id.toString() }),
-        //     userId: createdUser._id
-        // }
+        if (!signupDto.tenantName) {
+            throw new HttpException('Create tenant to continue', HttpStatus.FAILED_DEPENDENCY);
+        }
 
-        // this.saveTokens(token)
+        const tenant = await this.tenantService.createTenant({ tenantName: signupDto.tenantName })
 
-        // return { access: token.access }
-        throw new HttpException('Create tenant to continue', HttpStatus.FAILED_DEPENDENCY);
+        this.tenantService.assignTenantUser({tenantName:tenant.tenantName, userEmail:user.email})
+
+        const accessSecret = this.tenantService.decodeSecret(tenant.jwtAccessSecret)
+
+        const refreshSecret = this.tenantService.decodeSecret(tenant.jwtRefreshSecret)
+
+        const token: AuthToken = {
+            userId: createdUser._id,
+            access: this.generateToken({ userId: createdUser._id.toString() }, accessSecret, this.configService.get<string>('jwt.accessExpiresIn')),
+            refresh: this.generateToken({ userId: createdUser._id.toString() }, refreshSecret, this.configService.get<string>('jwt.refreshExpiresIn'))
+        }
+
+        this.saveTokens(token)
+
+        return { access: token.access, tenantId: tenant.tenantName }
+
     }
 
     async hashPassword(password: string) {
-
         const rounds = 10
-
         const hash = await bcrypt.hash(password, rounds);
-
         return hash
-
     }
 
     async verifyPassword(password: string, hash: string) {
-
         const isMatch = await bcrypt.compare(password, hash);
-
         return isMatch
-
-    }
-
-    generateAccessToken(payload: { userId: string }) {
-        return this.jwtService.sign(payload);
-    }
-
-    generateRefreshToken(payload: { userId: string }) {
-        return this.jwtService.sign(payload, {
-            secret: this.configService.get<string>('jwt.refreshSecret'),
-            expiresIn: this.configService.get<string>('jwt.refreshExpiresIn'),
-        });
     }
 
     generateToken(payload: { userId: string }, secret: string, expiresIn: string) {
@@ -82,12 +81,6 @@ export class AuthService {
         });
     }
 
-    generateResetPasswordToken(payload: { userId: string }) {
-        return this.jwtService.sign(payload, {
-            secret: this.configService.get<string>('jwt.forgotPasswordSecret'),
-            expiresIn: this.configService.get<string>('jwt.forgotPasswordExpiresIn'),
-        });
-    }
 
     saveTokens(token: AuthToken) {
         const createdToken = new this.AuthTokenModel(token)
@@ -99,7 +92,8 @@ export class AuthService {
         return this.AuthTokenModel.updateOne({ userId: token.userId }, { $set: { access: token.access, refresh: token.refresh } }, { upsert: true })
     }
 
-    async login(userCreds: loginDto) {
+
+    async login(userCreds: loginDto) {         
 
         const user = await this.userService.getUserPasswordByEmail(userCreds.email)
 
@@ -113,7 +107,7 @@ export class AuthService {
             throw new UnauthorizedException()
         }
 
-        const userTenant = await this.tenantService.getUserAssignedTenant(user._id)
+        const userTenant = await this.tenantService.getUserAssignedTenant(user._id)        
 
         if (!userTenant) {
             throw new HttpException('Create tenant to continue', HttpStatus.FAILED_DEPENDENCY);
@@ -121,14 +115,9 @@ export class AuthService {
 
         const tenant = await this.tenantService.getTenantById(userTenant.tenantId)
 
+        const accessSecret = this.tenantService.decodeSecret(tenant.jwtAccessSecret)
 
-        const [accessIv, accessEncrypted] = tenant.jwtAccessSecret.split('.')
-
-        const accessSecret = decrypt(accessEncrypted, accessIv, this.configService.get('jwt.tenantEncryptionAlgorithm'), this.configService.get('jwt.tenantEncryptionKey'))
-
-        const [refreshIv, refreshEncrypted] = tenant.jwtRefreshSecret.split('.')
-
-        const refreshSecret = decrypt(refreshEncrypted, refreshIv, this.configService.get('jwt.tenantEncryptionAlgorithm'), this.configService.get('jwt.tenantEncryptionKey'))
+        const refreshSecret = this.tenantService.decodeSecret(tenant.jwtRefreshSecret)
 
         const token: AuthToken = {
             userId: user._id,
@@ -138,7 +127,7 @@ export class AuthService {
 
         await this.updateTokenByUserId(token)
 
-        return { access: token.access }
+        return { access: token.access, tenantId:tenant.tenantName }
 
     }
 
@@ -148,13 +137,11 @@ export class AuthService {
 
         if (!tokenDoc) {
             throw new UnauthorizedException()
-        }
+        }        
 
-        const tenant = await this.tenantService.getTenant(tenantId)
+        const tenant = await this.tenantService.getTenantById(new mongoose.Types.ObjectId(tenantId) )
 
-        const [iv, encrypted] = tenant.jwtRefreshSecret.split('.')
-
-        const secret = decrypt(encrypted, iv, this.configService.get('jwt.tenantEncryptionAlgorithm'), this.configService.get('jwt.tenantEncryptionKey'))
+        const secret = this.tenantService.decodeSecret(tenant.jwtRefreshSecret)
 
         try {
             const payload: { userId: string, iat: number, exp: number } = await this.jwtService.verifyAsync(tokenDoc.refresh, {
@@ -176,7 +163,7 @@ export class AuthService {
 
         await this.updateTokenByUserId(newToken)
 
-        return { access: newToken.access }
+        return { access: newToken.access, tenantId:tenant.tenantName }
     }
 
     findOneAccessToken(token: string) {
@@ -193,9 +180,7 @@ export class AuthService {
 
             const tenant = await this.tenantService.getTenantById(userAssignedTenant.tenantId)
 
-            const [iv, encrypted] = tenant.jwtResetPasswordSecret.split('.')
-
-            const secret = decrypt(encrypted, iv, this.configService.get('jwt.tenantEncryptionAlgorithm'), this.configService.get('jwt.tenantEncryptionKey'))
+            const secret = this.tenantService.decodeSecret(tenant.jwtResetPasswordSecret)
 
             const resetToken = this.generateToken({ userId: user._id.toString() }, secret, this.configService.get<string>('jwt.forgotPasswordExpiresIn'))
 
@@ -225,12 +210,10 @@ export class AuthService {
 
         const tenant = await this.tenantService.getTenantById(userAssignedTenant.tenantId)
 
-        const [iv, encrypted] = tenant.jwtResetPasswordSecret.split('.')
-
-        const secret = decrypt(encrypted, iv, this.configService.get('jwt.tenantEncryptionAlgorithm'), this.configService.get('jwt.tenantEncryptionKey'))
+        const secret = this.tenantService.decodeSecret(tenant.jwtResetPasswordSecret)
 
         try {
-            const payload: { userId: string, iat: number, exp: number } = await this.jwtService.verifyAsync(token.resetPasswordToken, {secret: secret});
+            const payload: { userId: string, iat: number, exp: number } = await this.jwtService.verifyAsync(token.resetPasswordToken, { secret: secret });
 
             const newHashedPassword = await this.hashPassword(reqBody.newPassword)
 

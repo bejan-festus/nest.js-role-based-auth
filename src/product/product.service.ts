@@ -6,7 +6,8 @@ import { Product } from './product.model';
 @Injectable()
 export class ProductService {
 
-    constructor(@Inject('PRODUCT_MODEL') private ProductModel: Model<Product>){}
+    constructor(@Inject('PRODUCT_MODEL') private ProductModel: Model<Product>){      
+    }
 
     addProduct(reqBody:addProductDto){
       const createProduct = new this.ProductModel(reqBody)

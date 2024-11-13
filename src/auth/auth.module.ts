@@ -3,14 +3,13 @@ import { AuthController } from './auth.controller';
 import { UserModule } from 'src/users/user.module';
 import { AuthService } from './auth.service';
 import { JwtModule } from '@nestjs/jwt';
-import { ConfigService } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
 import { AuthToken, AuthTokenSchema } from './models/auth.model';
 import { ResetPassword, ResetPasswordSchema } from './models/resetPassword.model';
 import { RolesModule } from 'src/roles/roles.module';
 import { tenantConnectionProvider } from 'src/tenant/providers/tenant-connection.provider';
 import { TenantModule } from 'src/tenant/tenant.module';
-import { TenantsMiddleware } from 'src/middlewares/tenant.middleware';
+import { TenantsMiddleware } from 'src/tenant/middlewares/tenant.middleware';
 
 @Module({
   controllers: [AuthController],

@@ -8,7 +8,7 @@ declare const module: any;
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  app.useGlobalPipes(new ValidationPipe());
+  app.useGlobalPipes(new ValidationPipe({stopAtFirstError: true,}));
 
   const config = app.get(ConfigService)
 

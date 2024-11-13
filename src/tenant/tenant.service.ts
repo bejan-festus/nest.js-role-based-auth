@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { ConflictException, Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Tenant } from './models/tenant.model';
 import mongoose, { Model } from 'mongoose';
@@ -9,6 +9,7 @@ import { TenantAssignedUser } from './models/tenantAssignedUsers.model';
 import crypto from 'crypto';
 import { encrypt } from 'src/utils/encrypt.util';
 import { ConfigService } from '@nestjs/config';
+import { decrypt } from 'src/utils/decrypt.util';
 
 
 @Injectable()
@@ -17,7 +18,11 @@ export class TenantService {
         @InjectModel(TenantAssignedUser.name) private assignTenantUserModel: Model<TenantAssignedUser>,
         private userService: UserService, private configService: ConfigService) { }
 
-    createTenant(reqbody: createTenantDto): Promise<Tenant> {
+   async createTenant(reqbody: createTenantDto): Promise<Tenant> {
+        const isTenantExist = await this.tenantModel.findOne({ tenantName: { $regex: new RegExp(`^${reqbody.tenantName}$`, 'i') } })
+        if(isTenantExist){
+            throw new ConflictException('Tenant name already exist')
+        }
         reqbody['jwtAccessSecret'] = this.generateSecret()
         reqbody['jwtRefreshSecret'] = this.generateSecret()
         reqbody['jwtResetPasswordSecret'] = this.generateSecret()
@@ -26,10 +31,16 @@ export class TenantService {
     }
 
     generateSecret() {
-        const secret = crypto.randomBytes(64).toString('base64');                
+        const secret = crypto.randomBytes(64).toString('base64');
         const iv = crypto.randomBytes(16).toString('hex') // should be 16 byte long for aes256
-        const encrypted =  encrypt(secret, iv, this.configService.get('jwt.tenantEncryptionAlgorithm'), this.configService.get('jwt.tenantEncryptionKey'))
+        const encrypted = encrypt(secret, iv, this.configService.get('jwt.tenantEncryptionAlgorithm'), this.configService.get('jwt.tenantEncryptionKey'))
         return iv + '.' + encrypted
+    }
+
+    decodeSecret(cipher: string) {
+        const [iv, encrypted] = cipher.split('.')
+
+        return decrypt(encrypted, iv, this.configService.get('jwt.tenantEncryptionAlgorithm'), this.configService.get('jwt.tenantEncryptionKey'))
     }
 
     async assignTenantUser(reqBody: assignTenantUserDto) {
@@ -45,15 +56,21 @@ export class TenantService {
 
         const createTenantUser = new this.assignTenantUserModel(tenantUser)
 
-        return createTenantUser.save()
+        await createTenantUser.save()
+
+        return { message: "User assigned successfully to tenant" }
 
     }
 
-    getTenant(tenantName: string):Promise<Tenant> {
+    isUserAssignedToTenant(reqObj:{tenantId:string, userId:string}):Promise<TenantAssignedUser>{
+        return this.assignTenantUserModel.findOne({tenantId: new mongoose.Types.ObjectId(reqObj.tenantId) ,  userId: new mongoose.Types.ObjectId(reqObj.userId)  })
+    }
+
+    getTenant(tenantName: string): Promise<Tenant & {_id:mongoose.Types.ObjectId}> {
         return this.tenantModel.findOne({ tenantName: tenantName })
     }
 
-    getTenantById(tenantId: mongoose.Types.ObjectId):Promise<Tenant> {
+    getTenantById(tenantId: mongoose.Types.ObjectId): Promise<Tenant> {
         return this.tenantModel.findOne({ _id: tenantId })
     }
 

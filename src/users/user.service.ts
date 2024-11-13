@@ -23,7 +23,7 @@ export class UserService {
     }
 
     getUserByEmail(email:string):Promise<Omit<User & {_id:mongoose.Types.ObjectId}, 'password' >>{
-        return this.userModel.findOne({email:email}, {password:0})
+        return this.userModel.findOne({email:{ $regex: new RegExp(`^${email}$`, 'i') }}, {password:0})
     }
 
     getUserById(userId:string){

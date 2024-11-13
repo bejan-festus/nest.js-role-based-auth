@@ -7,6 +7,6 @@ import { ProductModule } from './product/product.module';
 import { TenantModule } from './tenant/tenant.module';
 
 @Module({
-  imports: [ AppConfigModule, AuthModule,TenantModule, UserModule, RolesModule, ProductModule ],
+  imports: [ AppConfigModule, AuthModule, TenantModule, UserModule, RolesModule, ProductModule ],
 })
 export class AppModule {}

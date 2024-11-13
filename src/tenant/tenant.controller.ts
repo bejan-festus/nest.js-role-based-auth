@@ -9,7 +9,7 @@ export class TenantController {
     constructor(private tenantService:TenantService){}
 
     @Post('create')
-    signup(@Body() reqbody: createTenantDto) {
+    createTenant(@Body() reqbody: createTenantDto) {
        return this.tenantService.createTenant(reqbody)
     }
 
